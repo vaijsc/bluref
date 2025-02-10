@@ -1,0 +1,123 @@
+# ------------------------------------------------------------------------
+# Copyright (c) 2022 megvii-model. All Rights Reserved.
+# ------------------------------------------------------------------------
+# Modified from BasicSR (https://github.com/xinntao/BasicSR)
+# Copyright 2018-2020 BasicSR Authors
+# ------------------------------------------------------------------------
+# general settings
+name: NAFNet_BluRef_GoPro
+model_type: ImageRestorationModel
+scale: 1
+num_gpu: 8
+manual_seed: 10
+
+datasets:
+  train:
+    phase: train
+    name: train_GoPro
+    type: RefGoProDataset
+    root_dir: datasets/GoPro/train
+    delta: 2
+
+    filename_tmpl: '{}'
+    io_backend: 
+      type: disk
+
+    gt_size: 256
+    use_flip: true
+    use_rot: true
+
+    # data loader
+    use_shuffle: true
+    num_worker_per_gpu: 8
+    batch_size_per_gpu: 2
+    dataset_enlarge_ratio: 1
+    prefetch_mode: ~
+
+  val:
+    phase: val
+    name: val_GoPro
+    type: PairedImageDataset
+    dataroot_gt: datasets/GoPro/val/sharp
+    dataroot_lq: datasets/GoPro/val/blur
+    io_backend:
+      type: disk
+
+densematching:
+  model: PDCNet
+  pre_trained_model: megadepth
+  optim_iter: 3
+  local_optim_iter: 3
+  PDCNet:
+    network_type: PDCNet
+    confidence_map_R: 1.0
+    multi_stage_type: MS
+    ransac_thresh: 1.0
+    mask_type: proba_interval_1_above_10
+    homography_visibility_mask: True
+    scaling_factors: [0.5, 0.6, 0.88, 1, 1.33, 1.66, 2]
+    compute_cyclic_consistency_error: False
+
+network_g:
+  type: NAFNetLocal
+  width: 64
+  enc_blk_nums: [1, 1, 1, 28]
+  middle_blk_num: 1
+  dec_blk_nums: [1, 1, 1, 1]
+
+# path
+path:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: ~ 
+# training settings
+train:
+  optim_g:
+    type: AdamW
+    lr: !!float 1e-3
+    weight_decay: !!float 1e-3
+    betas: [0.9, 0.9]
+
+  scheduler:
+    type: TrueCosineAnnealingLR
+    T_max: 400000
+    eta_min: !!float 1e-7
+
+  total_iter: 400000
+  warmup_iter: -1 # no warm up
+
+  # losses
+  pixel_opt:
+    type: PSNRLoss
+    loss_weight: 1
+    reduction: mean
+
+# validation settings
+val:
+  val_freq: !!float 1e3
+  save_img: true
+
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
+      crop_border: 0
+      test_y_channel: false
+
+# logging settings
+logger:
+  print_freq: 500
+  save_checkpoint_freq: !!float 1e3
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500
